@@ -1,0 +1,6 @@
+source https://nuget.org/api/v2
+
+nuget HtmlAgilityPack framework: net40
+nuget MimeKitLite framework: net40
+nuget CsvHelper framework: net40
+
