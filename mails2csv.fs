@@ -41,6 +41,19 @@ let extractTableData (html: string) =
 
   data
 
+let processMessageFile(file: string) =
+  Console.Write("Reading file '{0}'... ", Path.GetFileName(file))
+  try
+    let html = loadHtmlFromMessage file
+    Console.Write("extracting table data... ")
+    let data = extractTableData html
+    Console.WriteLine("done.")
+    Some data
+  with
+    | exc ->
+      Console.Error.Write("Error: {0}", exc)
+      None
+
 (* CSV output *)
 let writeCsv (filename: string) (data: (string * string) list list) =
   let encoding = Encoding.GetEncoding(1252) // Windows-1252 for Excel CSV import
@@ -59,13 +72,13 @@ let writeCsv (filename: string) (data: (string * string) list list) =
   |> ignore
   
   fileWriter.Close ()
+  
 
 (* Load all messages, write CSV file *)
 let mails2csv (sourceDir: string) (dstFile: string) =
   Directory.GetFiles(sourceDir)
   |> Array.toList
-  |> List.map loadHtmlFromMessage
-  |> List.map extractTableData
+  |> List.choose processMessageFile
   |> writeCsv dstFile
 
 let (<+>) x y = Path.Combine(x, y)
@@ -80,8 +93,14 @@ let main args =
   let baseDir = getBaseDir()
   let inDir = baseDir <+> "input"
   let outFile = baseDir <+> "output" <+> "data.csv"
-  Console.WriteLine("Reading mails from '{0}', writing CSV file '{1}'...", inDir, outFile)
+
+  Console.WriteLine("Reading mails from '{0}.", inDir)
+  Console.WriteLine("Writing to CSV file '{0}'.", outFile)
+  Console.WriteLine()
+
   mails2csv inDir outFile
-  Console.WriteLine("Done. Please press enter to exit program.")
+
+  Console.WriteLine()
+  Console.WriteLine("All done. Please press enter to exit program.")
   Console.ReadLine() |> ignore
   0
