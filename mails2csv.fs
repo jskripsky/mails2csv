@@ -31,7 +31,7 @@ let extractTableData (html: string) =
       |> cast
       |> Seq.map (fun n -> n.InnerText |> trim)
       |> Seq.toList
-    (texts.[0], texts.[1])
+    texts.[1]
 
   let data =
     doc.DocumentNode.SelectNodes("//table[1]//tr")
@@ -41,28 +41,44 @@ let extractTableData (html: string) =
 
   data
 
-let processMessageFile(file: string) =
-  Console.Write("Reading file '{0}'... ", Path.GetFileName(file))
+let (<+>) x y = Path.Combine(x, y)
+
+let fixMissingRow (list: string list) =
+  let insertAt (list: string list) pos item =
+    List.append (list.[..pos - 1]) (item::list.[pos..])
+
+  if list.Length = 6 then
+    list
+  else
+    insertAt list 4 "-"
+
+let processMessageFile (log: TextWriter) (file: string) =
+  log.Write(String.Format("Reading file '{0}'... ", Path.GetFileName(file)))
   try
     let html = loadHtmlFromMessage file
-    Console.Write("extracting table data... ")
-    let data = extractTableData html
-    Console.WriteLine("done.")
+    log.Write("extracting table data... ")
+    let data = extractTableData html |> fixMissingRow
+    log.WriteLine("done.")
+
+    let dstPath = Path.GetDirectoryName(file) <+> "processed" <+> Path.GetFileName(file)
+    log.WriteLine(String.Format("Moving {0} to {1}.", file, dstPath))
+    File.Move(file, dstPath)
+
     Some data
   with
     | exc ->
-      Console.Error.Write("Error: {0}", exc)
+      log.WriteLine(String.Format("Error: {0}", exc))
+      log.WriteLine()
       None
 
 (* CSV output *)
-let writeCsv (filename: string) (data: (string * string) list list) =
+let writeCsv (filename: string) (data: string list list) =
   let encoding = Encoding.GetEncoding(1252) // Windows-1252 for Excel CSV import
   use fileWriter = new StreamWriter(filename, false, encoding)
   use writer = new CsvWriter (fileWriter)
 
   let writeRow list =
     list
-    |> List.map snd
     |> List.map (fun (s: string) -> writer.WriteField (s))
     |> ignore
     writer.NextRecord ()
@@ -75,13 +91,13 @@ let writeCsv (filename: string) (data: (string * string) list list) =
   
 
 (* Load all messages, write CSV file *)
-let mails2csv (sourceDir: string) (dstFile: string) =
+let mails2csv (log: TextWriter) (sourceDir: string) (dstFile: string) =
+  let proc =processMessageFile log
+
   Directory.GetFiles(sourceDir)
   |> Array.toList
-  |> List.choose processMessageFile
+  |> List.choose proc
   |> writeCsv dstFile
-
-let (<+>) x y = Path.Combine(x, y)
 
 let getBaseDir () =
   let args = Environment.GetCommandLineArgs()
@@ -90,15 +106,21 @@ let getBaseDir () =
 
 [<EntryPoint>]
 let main args =
+  let ts = DateTime.Now.ToString("yyyyMMdd-HHmmss")
+
   let baseDir = getBaseDir()
   let inDir = baseDir <+> "input"
-  let outFile = baseDir <+> "output" <+> "data.csv"
+  let outFile = baseDir <+> "output" <+> "data-" + ts + ".csv"
+  let logFile = baseDir <+> "output" <+> "log-" + ts + ".txt"
 
   Console.WriteLine("Reading mails from '{0}.", inDir)
   Console.WriteLine("Writing to CSV file '{0}'.", outFile)
+  Console.WriteLine("Writing to Log file '{0}'.", logFile)
   Console.WriteLine()
 
-  mails2csv inDir outFile
+
+  use log = new StreamWriter(logFile)
+  mails2csv log inDir outFile
 
   Console.WriteLine()
   Console.WriteLine("All done. Please press enter to exit program.")
